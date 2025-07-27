@@ -100,7 +100,8 @@ def usp_dit_forward(
     ])
 
     # time embeddings
-    with amp.autocast(dtype=torch.float32):
+    device_type = x.device.type
+    with amp.autocast(device_type=device_type, dtype=torch.float32):
         e = self.time_embedding(
             sinusoidal_embedding_1d(self.freq_dim, t).float())
         e0 = self.time_projection(e).unflatten(1, (6, self.dim))

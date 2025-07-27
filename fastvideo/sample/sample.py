@@ -10,7 +10,38 @@ import gc
 import torch
 import wan
 from wan.configs import WAN_CONFIGS
-from decord import VideoReader, cpu
+# from decord import VideoReader, cpu  # Not available on macOS
+# macOS workaround: use OpenCV for video reading
+import cv2
+import numpy as np
+
+class VideoReader:
+    """macOS-compatible VideoReader using OpenCV"""
+    def __init__(self, path):
+        self.cap = cv2.VideoCapture(path)
+        self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    def __len__(self):
+        return self.frame_count
+    
+    def get_batch(self, indices):
+        frames = []
+        for idx in indices:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frames.append(frame)
+        return np.array(frames)
+    
+    def __del__(self):
+        if hasattr(self, 'cap'):
+            self.cap.release()
+
+def cpu(x):
+    """macOS workaround for decord.cpu()"""
+    return x
+
 from packaging import version as pver
 from scipy.spatial.transform import Rotation
 from os.path import join as opj
@@ -25,7 +56,7 @@ from accelerate.utils import set_seed
 from diffusers import FlowMatchEulerDiscreteScheduler
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
-import bitsandbytes as bnb
+# import bitsandbytes as bnb  # Not available on macOS (CUDA only)
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from PIL import Image
 from torch.distributed.fsdp import ShardingStrategy
@@ -764,7 +795,9 @@ def sample_one(
                 start_time = time.time()
 
                 with torch.no_grad():
-                    with torch.autocast("cuda", dtype=torch.bfloat16):
+                    device_type = device.type
+                    autocast_dtype = torch.bfloat16 if device_type != 'mps' else torch.float16
+                    with torch.autocast(device_type=device_type, dtype=autocast_dtype):
 
                         for i in range(sample_step):
                             latent_model_input = [latent]
@@ -837,7 +870,9 @@ def sample_one(
                 else:
                     model_input = torch.cat([model_input[:,:-latent_frame_zero,:,:], latent[:,-latent_frame_zero:,:,:]],dim=1)
             
-                with torch.autocast("cuda", dtype=torch.bfloat16):
+                device_type = model_input.device.type
+                autocast_dtype = torch.bfloat16 if device_type != 'mps' else torch.float16
+                with torch.autocast(device_type=device_type, dtype=autocast_dtype):
                     video_cat = scale(vae, model_input) 
                     video = video_cat[:,-frame_zero:]
                     video_all.append(video)
@@ -907,19 +942,28 @@ def upsample_conv3d_weights(conv_small,size):
     return conv_large
 
 def main(args):
-    torch.backends.cuda.matmul.allow_tf32 = True
+    # torch.backends.cuda.matmul.allow_tf32 = True  # Not needed for MPS
 
     local_rank = int(os.environ["LOCAL_RANK"])
     rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    
+    # Use gloo backend for macOS (nccl is CUDA-only)
+    backend = "gloo" if not torch.cuda.is_available() else "nccl"
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
 
     # Set independent cache directories for each rank
     os.environ["TRITON_CACHE_DIR"] = f"/tmp/triton_cache_{rank}"
     os.makedirs(os.environ["TRITON_CACHE_DIR"], exist_ok=True)
 
-    torch.cuda.set_device(local_rank)
-    device = torch.cuda.current_device()
+    # Set device based on availability (MPS for macOS, CUDA for Linux)
+    if torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+        device = torch.cuda.current_device()
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
     initialize_sequence_parallel_state(args.sp_size)
 
     # If passed along, set the training seed now. On GPU...
@@ -976,11 +1020,17 @@ def main(args):
 
     transformer = transformer.to(device)
 
-    transformer = FSDP(
-        transformer,
-        **fsdp_kwargs,
-        use_orig_params=True,
-    )
+    # Skip FSDP for MPS single-device inference (FSDP doesn't support MPS yet)
+    if device.type == "mps" or world_size == 1:
+        main_print("--> Skipping FSDP for single-device MPS inference")
+        # Don't wrap with FSDP for MPS or single device
+        pass
+    else:
+        transformer = FSDP(
+            transformer,
+            **fsdp_kwargs,
+            use_orig_params=True,
+        )
     # Set model as eval.
     transformer.eval().requires_grad_(False)
 

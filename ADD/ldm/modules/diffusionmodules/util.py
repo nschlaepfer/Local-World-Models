@@ -122,9 +122,18 @@ class CheckpointFunction(torch.autograd.Function):
         ctx.run_function = run_function
         ctx.input_tensors = list(args[:length])
         ctx.input_params = list(args[length:])
-        ctx.gpu_autocast_kwargs = {"enabled": torch.is_autocast_enabled(),
-                                   "dtype": torch.get_autocast_gpu_dtype(),
-                                   "cache_enabled": torch.is_autocast_cache_enabled()}
+        
+        # Create device-agnostic autocast kwargs
+        device_type = 'cuda' if torch.cuda.is_available() and next(iter(args)).is_cuda else 'cpu'
+        if torch.backends.mps.is_available() and next(iter(args)).device.type == 'mps':
+            device_type = 'mps'
+            
+        ctx.gpu_autocast_kwargs = {
+            "device_type": device_type,
+            "enabled": torch.is_autocast_enabled(),
+            "dtype": torch.get_autocast_gpu_dtype() if device_type == 'cuda' else torch.get_autocast_cpu_dtype(),
+            "cache_enabled": torch.is_autocast_cache_enabled()
+        }
         with torch.no_grad():
             output_tensors = ctx.run_function(*ctx.input_tensors)
         return output_tensors
@@ -132,8 +141,15 @@ class CheckpointFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *output_grads):
         ctx.input_tensors = [x.detach().requires_grad_(True) for x in ctx.input_tensors]
+        
+        # Use device-agnostic autocast based on stored kwargs
+        device_type = ctx.gpu_autocast_kwargs.get('device_type', 'cuda')
+        if 'device_type' not in ctx.gpu_autocast_kwargs:
+            # For backwards compatibility, default to cuda behavior
+            ctx.gpu_autocast_kwargs['device_type'] = device_type
+            
         with torch.enable_grad(), \
-                torch.cuda.amp.autocast(**ctx.gpu_autocast_kwargs):
+                torch.amp.autocast(**ctx.gpu_autocast_kwargs):
             # Fixes a bug where the first op in run_function modifies the
             # Tensor storage in place, which is not allowed for detach()'d
             # Tensors.

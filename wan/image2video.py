@@ -178,7 +178,15 @@ class Yume:
         self.use_usp = use_usp
         self.t5_cpu = t5_cpu
 
-        self.device = torch.device(f"cuda:{device_id}")
+        # Handle different device types properly
+        if isinstance(device_id, str) and device_id == "mps":
+            self.device = torch.device("mps")
+        elif isinstance(device_id, torch.device):
+            self.device = device_id
+        elif torch.cuda.is_available():
+            self.device = torch.device(f"cuda:{device_id}")
+        else:
+            self.device = torch.device("cpu")
         self.text_encoder = T5EncoderModel(
             text_len=config.text_len,
             dtype=config.t5_dtype,

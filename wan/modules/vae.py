@@ -2,7 +2,7 @@
 import logging
 
 import torch
-import torch.cuda.amp as amp
+import torch.amp as amp
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
@@ -648,14 +648,18 @@ class WanVAE:
         """
         videos: A list of videos each with shape [C, T, H, W].
         """
-        with amp.autocast(dtype=self.dtype):
+        # Use device-agnostic autocast
+        device_type = self.device.type if hasattr(self.device, 'type') else str(self.device).split(':')[0]
+        with amp.autocast(device_type=device_type, dtype=self.dtype):
             return [
                 self.model.encode(u.unsqueeze(0), self.scale).float().squeeze(0)
                 for u in videos
             ]
 
     def decode(self, zs):
-        with amp.autocast(dtype=self.dtype):
+        # Use device-agnostic autocast  
+        device_type = self.device.type if hasattr(self.device, 'type') else str(self.device).split(':')[0]
+        with amp.autocast(device_type=device_type, dtype=self.dtype):
             return [
                 self.model.decode(u.unsqueeze(0),
                                   self.scale).float().clamp_(-1, 1).squeeze(0)

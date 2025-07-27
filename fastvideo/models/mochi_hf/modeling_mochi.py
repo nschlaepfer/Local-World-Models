@@ -28,7 +28,12 @@ from diffusers.models.normalization import AdaLayerNormContinuous
 from diffusers.utils import (USE_PEFT_BACKEND, is_torch_version, logging,
                              scale_lora_layers, unscale_lora_layers)
 from diffusers.utils.torch_utils import maybe_allow_in_graph
-from liger_kernel.ops.swiglu import LigerSiLUMulFunction
+# from liger_kernel.ops.swiglu import LigerSiLUMulFunction  # Not available on macOS (CUDA only)
+try:
+    from liger_kernel.ops.swiglu import LigerSiLUMulFunction
+except ImportError:
+    # Fallback for macOS - use standard PyTorch operations
+    LigerSiLUMulFunction = None
 
 from fastvideo.models.flash_attn_no_pad import flash_attn_no_pad
 from fastvideo.models.mochi_hf.norm import (MochiLayerNormContinuous,
@@ -62,7 +67,11 @@ class FeedForward(HF_FeedForward):
         hidden_states = self.net[0].proj(hidden_states)
         hidden_states, gate = hidden_states.chunk(2, dim=-1)
 
-        return self.net[2](LigerSiLUMulFunction.apply(gate, hidden_states))
+        if LigerSiLUMulFunction is not None:
+            return self.net[2](LigerSiLUMulFunction.apply(gate, hidden_states))
+        else:
+            # Fallback for macOS - standard SwiGLU implementation
+            return self.net[2](torch.nn.functional.silu(gate) * hidden_states)
 
 
 class MochiAttention(nn.Module):

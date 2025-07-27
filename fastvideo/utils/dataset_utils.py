@@ -3,7 +3,14 @@ import random
 from collections import Counter
 from typing import List, Optional
 
-import decord
+# import decord  # Not available on macOS
+try:
+    import decord
+    DECORD_AVAILABLE = True
+except ImportError:
+    # Fallback for macOS
+    DECORD_AVAILABLE = False
+    decord = None
 import torch
 import torch.utils
 import torch.utils.data

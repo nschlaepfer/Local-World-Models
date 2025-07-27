@@ -536,7 +536,22 @@ class CLIPModel:
         ])
         videos = self.transforms.transforms[-1](videos.mul_(0.5).add_(0.5))
 
-        # forward
-        with torch.cuda.amp.autocast(dtype=self.dtype):
-            out = self.model.visual(videos, use_31_block=True)
-            return out
+        # forward - fix for MPS compatibility
+        # Get device type from the model to determine autocast device
+        device = next(self.model.parameters()).device
+        device_type = device.type
+        
+        # For MPS, ensure input tensors match model dtype to avoid type mismatch
+        if device_type == "mps":
+            # Convert videos to match model dtype
+            model_dtype = next(self.model.parameters()).dtype
+            videos = videos.to(dtype=model_dtype)
+            # Use device-agnostic autocast
+            with torch.amp.autocast(device_type=device_type, dtype=self.dtype):
+                out = self.model.visual(videos, use_31_block=True)
+                return out
+        else:
+            # Use device-agnostic autocast for all devices
+            with torch.amp.autocast(device_type=device_type, dtype=self.dtype):
+                out = self.model.visual(videos, use_31_block=True)
+                return out

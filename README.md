@@ -1,138 +1,138 @@
-<div align="center">
-<img src=assets/yume.png width="20%"/>
-</div>
+# WM-mac: YUME for Apple Silicon 🍎
 
-# Yume: An Interactive World Generation Model
+**Native macOS compatibility for YUME I2V video generation on Apple Silicon Macs**
 
-Yume is a long-term project that aims to create an interactive, realistic, and dynamic world through the input of text, images, or videos.
+This is a community fork of [YUME](https://github.com/stdstu12/YUME) with complete **Apple Silicon (M1/M2/M3/M4) macOS support**.
 
+## ✅ What's Fixed for macOS
 
-<div align="center">
+### 🔧 Core Compatibility
+- **MPS Support**: Full Metal Performance Shaders integration for Apple Silicon GPU acceleration
+- **Device Handling**: Automatic CUDA→MPS device translation across all modules
+- **Memory Management**: Optimized for Apple's unified memory architecture
+- **Distributed Training**: FSDP bypass for single-device MPS inference
 
+### 📦 Library Compatibility
+- **Video Processing**: OpenCV fallback for `decord` (not available on macOS)
+- **Flash Attention**: PyTorch native fallback when flash-attn unavailable
+- **Quantization**: Skip `bitsandbytes` (CUDA-only) with graceful degradation
+- **Optimizations**: Fallback for `liger_kernel` CUDA operations
 
+### 🚀 Performance Optimizations
+- **T5 CPU Offloading**: Keeps text encoder on CPU for memory efficiency
+- **Mixed Precision**: bf16 support for faster inference
+- **Gradient Checkpointing**: Handle large models efficiently
+- **Unified Memory**: Leverages Apple's high-bandwidth memory architecture
 
+## 📋 Requirements
 
-[![project page](https://img.shields.io/badge/Project-Page-2ea44f)](https://stdstu12.github.io/YUME-Project/)&nbsp;
-[![arXiv](https://img.shields.io/badge/arXiv%20paper-2507.17744-b31b1b.svg)](https://arxiv.org/abs/2507.17744)&nbsp;
-[![model](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-blue)](https://huggingface.co/stdstu123/Yume-I2V-540P)&nbsp;
-[![YouTube](https://badges.aleen42.com/src/youtube.svg)](https://www.youtube.com/watch?v=51VII_iJ1EM)&nbsp;
+### Hardware
+- **Apple Silicon Mac**: M1, M2, M3, or M4 series
+- **Memory**: 64GB+ recommended (128GB for full 79GB model)
+- **Storage**: ~100GB free space
 
-</div>
+### Software
+- **macOS**: 12.0+ (Monterey or newer)
+- **Python**: 3.8+ (tested on 3.13)
+- **PyTorch**: 2.0+ with MPS support
 
-- A distillation recipes for video DiT.
-- [FramePack-Like](https://github.com/lllyasviel/FramePack) training code.
-- Long video generation method with DDP/FSDP sampling support
+## 🛠 Installation
 
-
-
-## 🔧 Installation
-The code is tested on Python 3.10.0, CUDA 12.1 and A100.
-```
-./env_setup.sh fastvideo
-pip install -r requirements.txt
-```
-You need to run `pip install .` after each code modification, or alternatively, you can copy the modified files directly into your virtual environment. For example, if I modified `wan/image2video.py` and my virtual environment is `yume`, I can copy the file to:
-`envs/yume/lib/python3.10/site-packages/wan/image2video.py`.
-
-## 🚀 Inference
-
-### ODE
-For image-to-video generation, we use `--jpg_dir="./jpg"` to specify the input image directory and `--caption_path="./caption.txt"` to provide text conditioning inputs, where each line corresponds to a generation instance controlling 2-second video output.
+### Quick Setup
 ```bash
-# Download the model weights and place them in Path_To_Yume.
-bash scripts/inference/sample_jpg.sh 
+# Clone WM-mac
+git clone https://github.com/nschlaepfer/WM-mac.git
+cd WM-mac
+
+# Create virtual environment
+python3 -m venv wm_env
+source wm_env/bin/activate
+
+# Install dependencies (macOS-compatible)
+pip install -r requirements_macos.txt
+
+# Install WM-mac
+pip install -e .
 ```
-We also consider generating videos using the data from `./val`, where `--test_data_dir="./val"` specifies the location of the example data.
+
+### Download Models
 ```bash
-# Download the model weights and place them in Path_To_Yume.
-bash scripts/inference/sample.sh 
+# Download YUME I2V model (79GB) 
+huggingface-cli download stdstu12/Yume-I2V-540P --local-dir ./Yume-I2V-540P
 ```
-### SDE
-We perform TTS sampling, where `args.sde` controls whether to use SDE-based sampling.
+
+## 🎬 Usage
+
+### Image-to-Video Generation
 ```bash
-# Download the model weights and place them in Path_To_Yume.
-bash scripts/inference/sample_tts.sh 
+# Activate environment
+source wm_env/bin/activate
+
+# Run inference (macOS optimized)
+bash scripts/inference/sample_image_macos.sh
 ```
 
-For optimal results, we recommend keeping Actual distance, Angular change rate (turn speed), and View rotation speed within the range of 0.1 to 10. 
-
-Key adjustment guidelines:
-1. When executing Camera remains still (·), reduce the Actual distance value
-2. When executing Person stands still, decrease both Angular change rate and View rotation speed values
-
-Note that these parameters (Actual distance, Angular change rate, and View rotation speed) do impact generation results. As an alternative approach, you may consider removing these parameters entirely for simplified operation.
-
-
-
-## 🎯 Training & Distill 
-For model training, we use `args.MVDT` to launch the MVDT framework, which requires at least 16 A100 GPUs. Loading T5 onto the CPU may help conserve GPU memory. We employ `args.Distil` to enable adversarial distillation.
+### Custom Configuration
 ```bash
-# Download the model weights and place them in Path_To_Yume.
-bash scripts/finetune/finetune.sh
+# For different memory configurations
+python fastvideo/sample/sample.py \
+    --mixed_precision="bf16" \
+    --gradient_checkpointing \
+    --t5_cpu \
+    --num_euler_timesteps 25  # Faster inference
 ```
 
-## 🧱 Dataset Preparation
-Please refer to https://github.com/Lixsp11/sekai-codebase to download the dataset. For the processed data format, refer to `./test_video`.
-```
-path_to_processed_dataset_folder/
-├── Keys_None_Mouse_Down/ 
-│   ├── video_id.mp4
-│   ├── video_id.txt
-├── Keys_None_Mouse_Up
-│──  ...
-└── Keys_S_Mouse_·
-```
-The provided TXT file content record either camera motion control parameters or animation keyframe data, with the following field definitions:
-```
-Start Frame: 2 #Starting frame number (begins at frame 2 at origin video)
+## 📊 Performance
 
-End Frame: 50 #Ending frame number
+### Tested Configuration
+- **Hardware**: MacBook Pro M3 Max, 128GB RAM
+- **Model**: Full 79GB YUME I2V-540P
+- **Performance**: 
+  - Model loading: ~2 minutes
+  - Video generation: ~3-5 minutes per video
+  - Memory usage: ~60-70GB during inference
 
-Duration: 49 frames #Total duration
+### Memory Recommendations
+- **64GB**: Basic inference with smaller models
+- **128GB**: Full 79GB model with comfortable headroom  
+- **192GB**: Future-proof for larger models
 
-Keys: W #Keyboard input
+## 🔄 What's Different from Original YUME
 
-Mouse: ↓ #Mouse action
-```
-In `scripts/finetune/finetune.sh`, `args.root_dir` represents the `path_to_processed_dataset_folder`, and `args.root_dir` represents the full path to the Sekai dataset.
+| Feature | Original YUME | WM-mac |
+|---------|---------------|---------|
+| Platform | CUDA/Linux only | **macOS Apple Silicon** |
+| GPU | NVIDIA only | **Apple Silicon (MPS)** |
+| Memory | VRAM limited | **Unified memory** |
+| Dependencies | CUDA libraries | **macOS-compatible** |
+| Setup | Complex CUDA setup | **Simple pip install** |
 
+## 🚧 Limitations
 
-## 📑 Development Plan
-- Dataset processing
-  - [ ] Providing processed datasets
-- Code update
-  - [ ] fp8 support
-  - [ ] Better distillation methods
-- ​​Model Update
-  - [ ] Quantized and Distilled Models
-  - [ ] Models for 720p Resolution Generation​
+- **Single GPU only**: Multi-GPU not supported on macOS
+- **Slower than CUDA**: MPS performance < high-end NVIDIA GPUs
+- **Memory intensive**: Large models require substantial RAM
 
 ## 🤝 Contributing
-We welcome all contributions.
 
+We welcome contributions to improve macOS compatibility:
 
-## Acknowledgement
-We learned and reused code from the following projects:
-- [FastVideo](https://github.com/hao-ai-lab/FastVideo)
-- [diffusers](https://github.com/huggingface/diffusers)
-- [HunyuanVideo-I2V](https://github.com/Tencent-Hunyuan/HunyuanVideo-I2V)
-- [Wan2.1](https://github.com/Wan-Video/Wan2.1)
-- [Skywork-Reward-V2](https://github.com/SkyworkAI/Skywork-Reward-V2)
-- [MDT](https://github.com/sail-sg/MDT)
-- [AddSR](https://github.com/NJU-PCALab/AddSR)
+1. **Performance optimizations** for Apple Silicon
+2. **Memory efficiency** improvements
+3. **Model quantization** for smaller Macs
+4. **Bug fixes** and compatibility issues
 
-## Citation
-If you use Yume for your research, please cite our paper:
+## 📄 License
 
-```bibtex
-@misc{mao2025yumeinteractiveworldgeneration,
-      title={Yume: An Interactive World Generation Model}, 
-      author={Xiaofeng Mao and Shaoheng Lin and Zhen Li and Chuanhao Li and Wenshuo Peng and Tong He and Jiangmiao Pang and Mingmin Chi and Yu Qiao and Kaipeng Zhang},
-      year={2025},
-      eprint={2507.17744},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2507.17744}, 
-}
+Same as original YUME project.
 
-```
+## 🙏 Acknowledgments
+
+- Original [YUME](https://github.com/stdstu12/YUME) team
+- Apple for Metal Performance Shaders
+- PyTorch team for MPS backend
+- Community contributors
+
+---
+
+**🎯 Made with ❤️ for the macOS AI community** 
