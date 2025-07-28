@@ -25,7 +25,7 @@ def sinusoidal_embedding_1d(dim, position):
     return x
 
 
-@amp.autocast(enabled=False)
+@amp.autocast(device_type='mps', enabled=False)
 def rope_params(max_seq_len, dim, theta=10000):
     assert dim % 2 == 0
     freqs = torch.outer(
@@ -36,7 +36,7 @@ def rope_params(max_seq_len, dim, theta=10000):
     return freqs
 
 
-@amp.autocast(enabled=False)
+@amp.autocast(device_type='mps', enabled=False)
 def rope_apply(x, grid_sizes, freqs, b_, s_, n_, d_, mask_token=None, ids_restore=None, ids_keep=None, rand_num_img=None):
     if rand_num_img!=None and rand_num_img<0.4:
         if ids_restore!=None:

@@ -51,3 +51,4 @@ outputs_video
 sbatch.sh
 *.out
 env
+mochi-1-preview/
